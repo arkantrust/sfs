@@ -7,6 +7,8 @@ import (
 	"log"
 	"net"
 	"time"
+	"bytes"
+	"encoding/binary"
 )
 
 type FileServer struct{}
@@ -27,10 +29,12 @@ func (fs *FileServer) start() {
 }
 
 func (fs *FileServer) handleConnection(conn net.Conn) {
-	buf := make([]byte, 2048)
+	buf := new(bytes.Buffer)
 	defer conn.Close()
 	for {
-		n, err := conn.Read(buf)
+        var size int64
+        binary.Read(conn, binary.LittleEndian, &size)
+		n, err := io.CopyN(buf, conn, size)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Println("Client closed the connection")
@@ -39,10 +43,10 @@ func (fs *FileServer) handleConnection(conn net.Conn) {
 			}
 			return
 		}
-		file := buf[:n]
-		// fmt.Println(string(file)) // TODO: Convert to string for better readability
-		fmt.Println(file)
-		fmt.Printf("received %d bytes\n", n)
+        if n > 0 {
+            fmt.Println(buf.Bytes()) // TODO: Convert to string for better readability
+            fmt.Printf("received %d bytes\n", n)
+        }
 	}
 }
 
@@ -57,7 +61,9 @@ func sendFile(size int) error {
 		return err
 	}
 	defer conn.Close()
-	n, err := conn.Write(file)
+
+    binary.Write(conn, binary.LittleEndian, int64(size))
+    n, err := io.CopyN(conn, bytes.NewReader(file), int64(size))
 	if err != nil {
 		return err
 	}
@@ -68,7 +74,7 @@ func sendFile(size int) error {
 func main() {
 	go func() {
 		time.Sleep(4 * time.Second)
-		if err := sendFile(1000); err != nil {
+		if err := sendFile(30000); err != nil {
 			log.Println("Error sending file:", err)
 		}
 	}()
